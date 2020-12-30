@@ -78,20 +78,33 @@ DECLARE_GLOBAL_DATA_PTR;
 
 bool lvds_enabled=false;
 
+int som_pmic_present = -1;
+int board_eeprom_present = -1;
+int board_pca9534_present = -1;
+
+static void probe_i2c_hardware(void)
+{
+	int oldbus = i2c_get_bus_num();
+	i2c_set_bus_num(PMIC_I2C_BUS);
+	/* Probing for PMIC present on all SOM types but SOM-SOLO */
+	som_pmic_present = (0 == i2c_probe(CONFIG_POWER_PFUZE100_I2C_ADDR));
+	i2c_set_bus_num(0);
+	/* Probing for PCA9534 present only on SymphonyBoard */
+	board_pca9534_present = (0 == i2c_probe(0x20));
+	i2c_set_bus_num(1);
+	/* Probing for EEPROM present only on SOLOCustomBoard and SymphonyBoard*/
+	board_eeprom_present = (0 == i2c_probe(0x51));
+	i2c_set_bus_num(oldbus);
+}
+
 /*
  * Returns true iff the SOM is VAR-SOM-SOLO
  */
 static bool is_som_solo(void)
 {
-	bool ret;
-	int oldbus = i2c_get_bus_num();
-
-	i2c_set_bus_num(PMIC_I2C_BUS);
-	/* Probing for PMIC which is preset on all SOM types but SOM-SOLO */
-	ret = (0 != i2c_probe(CONFIG_POWER_PFUZE100_I2C_ADDR));
-
-	i2c_set_bus_num(oldbus);
-	return ret;
+	if (som_pmic_present < 0)
+		probe_i2c_hardware();
+	return (som_pmic_present == 0);
 }
 
 /*
@@ -99,15 +112,9 @@ static bool is_som_solo(void)
  */
 static bool is_solo_custom_board(void)
 {
-	bool ret;
-	int oldbus = i2c_get_bus_num();
-
-	i2c_set_bus_num(1);
-	/* Probing for extra EEPROM present only on SOLOCustomBoard */
-	ret = (0 == i2c_probe(0x51));
-
-	i2c_set_bus_num(oldbus);
-	return ret;
+	if ((board_eeprom_present < 0) || (board_pca9534_present < 0))
+		probe_i2c_hardware();
+	return ((board_eeprom_present == 1) && (board_pca9534_present == 0));
 }
 
 /*
@@ -115,15 +122,9 @@ static bool is_solo_custom_board(void)
  */
 static bool is_symphony_board(void)
 {
-	bool ret;
-	int oldbus = i2c_get_bus_num();
-
-	i2c_set_bus_num(0);
-	/* Probing for extra PCA9534 present only on SymphonyBoard */
-	ret = (0 == i2c_probe(0x20));
-
-	i2c_set_bus_num(oldbus);
-	return ret;
+	if ((board_eeprom_present < 0) || (board_pca9534_present < 0))
+		probe_i2c_hardware();
+	return ((board_eeprom_present == 1) && (board_pca9534_present == 1));
 }
 
 static bool is_cpu_pop_packaged(void)
